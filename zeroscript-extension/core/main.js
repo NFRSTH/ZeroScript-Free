@@ -42,7 +42,16 @@
   const _diag = [];
   function diag(event, data) {
     let snap = {};
-    try { snap = { ...P.snapshot(), gen: P.isGenerating(), run: typeof A !== 'undefined' ? A.running : false }; } catch {}
+    try {
+      const base = P.snapshot();
+      const gen = P.isGenerating();
+      const run = typeof A !== 'undefined' ? A.running : false;
+      snap = { ...base, gen, run };
+    } catch (e) {
+      // Only hide TDZ on A; re-log provider errors
+      if (!String(e && e.message || e).includes('A')) console.error('[zs-diag] snapshot failed', e);
+      try { snap = { ...P.snapshot(), gen: P.isGenerating(), run: false }; } catch {}
+    }
     const e = { t: Date.now(), iso: new Date().toISOString().slice(11, 23), event,
                 data: data || null, snap };
     _diag.push(e);
@@ -55,6 +64,7 @@
     } catch {}
     try { window.__zsDiag = _diag; } catch {}
   }
+  P.init({ diag });
 
   // ── [TRACE] Main-thread stall detector ─────────────────────────────────────
   // The reported bug ("tools spin 15-20s, the chip timer stops rising") can only
@@ -67,17 +77,15 @@
   {
     const EXPECT = 250, STALL = 800;
     let _lastTick = Date.now();
-    let _stallIv = null;
-    function _toggleStall(on){
-      if (on && !_stallIv) _stallIv = setInterval(() => {
-        const now = Date.now();
-        const gap = now - _lastTick;
-        _lastTick = now;
-        if (gap > STALL) diag("stall.detected", { ms: gap, overBy: gap - EXPECT, toolRunning: A.toolRunning, running: A.running, injecting: A.injecting });
-      }, EXPECT);
-      if (!on && _stallIv) { clearInterval(_stallIv); _stallIv=null; }
-    }
-    setInterval(()=> _toggleStall(A.running || A.toolRunning), 1000);
+    setInterval(() => {
+      const now = Date.now();
+      const gap = now - _lastTick;
+      _lastTick = now;
+      if (gap > STALL) {
+        diag("stall.detected", { ms: gap, overBy: gap - EXPECT,
+          toolRunning: A.toolRunning, running: A.running, injecting: A.injecting });
+      }
+    }, EXPECT);
   }
 
   // Ko-fi tip link.
@@ -187,7 +195,6 @@
     // Timestamp of the last successful tool-catalogue refresh (see ensureTools).
     toolsAt: 0,
   };
-  try { P.init({ diag }); } catch {}
 
   async function waitFor(pred, timeout) {
     const t0 = Date.now();
@@ -4231,15 +4238,11 @@
     }
   }
   const mo = new MutationObserver(() => {
-    if (document.hidden) return;
-    requestAnimationFrame(() => { preHideWholeItems(); scheduleSweep(); });
+    preHideWholeItems();
+    scheduleSweep();
   });
   mo.observe(document.documentElement, { childList: true, subtree: true });
-  let _sweepIv = null;
-  setInterval(() => {
-    if (A.running && !document.hidden && !_sweepIv) _sweepIv = setInterval(scheduleSweep, 1500);
-    if ((!A.running || document.hidden) && _sweepIv) { clearInterval(_sweepIv); _sweepIv=null; }
-  }, 1000);
+  setInterval(scheduleSweep, 1500);
   // When the user returns to the tab, immediately refresh camouflage/state.
   document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleSweep(); });
 

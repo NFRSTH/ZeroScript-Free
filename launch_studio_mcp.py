@@ -19,6 +19,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -84,12 +85,14 @@ def _find_studio_mcp_windows() -> Optional[Path]:
     We only consider version folders that ALSO contain a current Studio
     executable, and prefer the newest of those. We keep zombie StudioMCP.exe
     paths only as a last-resort fallback if no paired install exists.
-    Optimized with os.scandir and single stat per dir.
     """
-    import time as _t
     global _FIND_CACHE
-    if _FIND_CACHE[1] is not None and _t.time() - _FIND_CACHE[0] < 60 and _FIND_CACHE[1].exists():
-        return _FIND_CACHE[1]
+    if time.time() - _FIND_CACHE[0] < 60:
+        cached = _FIND_CACHE[1]
+        if cached is None:
+            return None
+        if cached.exists():
+            return cached
     paired: list[Path] = []
     orphans: list[Path] = []
     for root in _candidate_roots():
@@ -109,8 +112,7 @@ def _find_studio_mcp_windows() -> Optional[Path]:
         except OSError:
             continue
     res = _newest_path(paired) or _newest_path(orphans)
-    import time as _t2
-    _FIND_CACHE = (_t2.time(), res)
+    _FIND_CACHE = (time.time(), res)
     return res
 
 

@@ -247,6 +247,8 @@ def _port_owner(port):
         except Exception:
             pass
     if not out:
+        res = None
+        _PORT_OWNER_CACHE[port] = (now, res)
         return None
     pid = None
     # v4 lines end the local address in ":<port>", v6 in "]:<port>" - matching
@@ -259,6 +261,8 @@ def _port_owner(port):
                 pid = parts[-1]
                 break
     if not pid:
+        res = None
+        _PORT_OWNER_CACHE[port] = (now, res)
         return None
     name, path = "?", ""
     try:
@@ -289,6 +293,7 @@ def _roblox_studio_app_running():
     if now - _STUDIO_APP_CACHE[0] < 3.0:
         return _STUDIO_APP_CACHE[1]
     if sys.platform != "win32":
+        _STUDIO_APP_CACHE = (now, None)
         return None
     try:
         out = subprocess.run(
@@ -297,6 +302,7 @@ def _roblox_studio_app_running():
             timeout=8,
         ).stdout
     except Exception:
+        _STUDIO_APP_CACHE = (now, None)
         return None
     res = "RobloxStudioBeta.exe" in out
     _STUDIO_APP_CACHE = (now, res)
@@ -879,14 +885,14 @@ class MCPClient:
                 # A single tools/list then caches an empty list forever. So if we
                 # get nothing, retry for a few seconds to let the backend attach.
                 # Short per-attempt timeout so the bridge never looks frozen if the
-                for attempt in range(6):
-                    if self.refresh_tools(timeout=2):
+                for _ in range(12):
+                    if self.refresh_tools(timeout=3):
                         break
                     if not self.is_alive():
                         break
                     if getattr(self, 'saw_foreign_ws_host', False):
                         break
-                    time.sleep(0.4 * (1.6 ** attempt))
+                    time.sleep(1.0)
             log(f"[{self.id}] MCP server up  ({len(self.tools_cache)} tools advertised)", "cy")
 
     def is_alive(self):
@@ -1209,14 +1215,9 @@ NO_PLACE_MARKERS = ("doesn't have a place", "no place opened", "place opened",
                     "has disconnected", "no active studio")
 
 
-_PROBE_CACHE = (0, None)
 def _probe_tool_text(tool):
     """Call a side-effect-free probe tool with no args; return its text, or None if
-    the tool is unavailable / the server is busy / it errored (best-effort). TTL 2s."""
-    global _PROBE_CACHE
-    now = time.time()
-    if tool == STUDIO_PROBE_TOOL and _PROBE_CACHE[1] is not None and now - _PROBE_CACHE[0] < 2.0:
-        return _PROBE_CACHE[1]
+    the tool is unavailable / the server is busy / it errored (best-effort)."""
     with mgr.index_lock:
         entry = mgr.index.get(tool)
     if entry is None:
@@ -1228,14 +1229,11 @@ def _probe_tool_text(tool):
     try:
         if not holder.is_alive():
             return None
-        msg = holder._request("tools/call", {"name": real_name, "arguments": {}}, timeout=4)
+        msg = holder._request("tools/call", {"name": real_name, "arguments": {}}, timeout=8)
         if not msg or msg.get("error"):
             return None
         content = msg.get("result", {}).get("content", [])
-        txt = "\n".join(it.get("text", "") for it in content if it.get("type") == "text")
-        if tool == STUDIO_PROBE_TOOL:
-            _PROBE_CACHE = (now, txt)
-        return txt
+        return "\n".join(it.get("text", "") for it in content if it.get("type") == "text")
     except Exception:
         return None
     finally:

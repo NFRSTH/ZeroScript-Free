@@ -54,11 +54,11 @@ const ZSProvider = (() => {
   };
 
   const timings = {
-    GEN_IDLE_MS: 600,
-    REASON_IDLE_MS: 10000,
-    WARMUP_MS: 30000,
-    REASON_NOREPLY_MS: 60000,
-    STABLE_MS: 6000,
+    GEN_IDLE_MS: 800,
+    REASON_IDLE_MS: 12000,
+    WARMUP_MS: 45000,
+    REASON_NOREPLY_MS: 90000,
+    STABLE_MS: 9000,
     RESPONSE_TIMEOUT_MS: 300000,
   };
 
@@ -198,25 +198,17 @@ const ZSProvider = (() => {
 
   let _visLatch = false, _visLatchSet = false, _visAt = 0, _visCache = false;
   function badgeVision() {
-    const hdr = document.querySelector('header [class*="badge"], [data-testid*="model"]');
-    if (hdr && /^(instant|expert|vision)$/i.test((hdr.textContent||"").trim())) return /vision/i.test(hdr.textContent||"");
-    const els = [...document.querySelectorAll('[class*="model"] span, header span')].filter(e=>e.childElementCount===0 && /^(instant|expert|vision)$/i.test((e.textContent||"").trim()) && e.getBoundingClientRect().width>0);
+    const els = [...document.querySelectorAll("div,span")].filter(
+      (e) => e.childElementCount === 0 &&
+             /^(instant|expert|vision)$/i.test((e.textContent || "").trim()) &&
+             e.getBoundingClientRect().width > 0);
     if (!els.length) return null;
-    els.sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top);
-    return /vision/i.test(els[0].textContent||"");
-  }
-  let _visObserver = null;
-  function ensureVisObserver(){
-    if (_visObserver) return;
-    const g = document.querySelector(S.modeRadioGroup);
-    const target = g || document.body;
-    _visObserver = new MutationObserver(()=>{ _visAt=0; });
-    _visObserver.observe(target,{subtree:true, attributeFilter:["aria-checked","class"]});
+    els.sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top);
+    return /vision/i.test(els[0].textContent || "");
   }
   function detectVision() {
-    ensureVisObserver();
     const now = Date.now();
-    if (now - _visAt < 800) return _visCache;
+    if (now - _visAt < 400) return _visCache;
     _visAt = now;
     const group = document.querySelector(S.modeRadioGroup);
     if (group) {
@@ -304,10 +296,7 @@ const ZSProvider = (() => {
     if (btn.querySelector("rect")) return true;
     const p = btn.querySelector("path");
     if (!p) return false;
-    const d = p.getAttribute("d") || "";
-    if (/^\s*M\s*[0-3][\s.]/.test(d)) return true;
-    if (d.length < 80 && /M2/.test(d)) return true;
-    return false;
+    return /^\s*M\s*[0-3][\s.]/.test(p.getAttribute("d") || "");
   }
 
   function streamText(item) {
