@@ -77,15 +77,12 @@
   {
     const EXPECT = 250, STALL = 800;
     let _lastTick = Date.now();
-    setInterval(() => {
-      const now = Date.now();
-      const gap = now - _lastTick;
-      _lastTick = now;
-      if (gap > STALL) {
-        diag("stall.detected", { ms: gap, overBy: gap - EXPECT,
-          toolRunning: A.toolRunning, running: A.running, injecting: A.injecting });
-      }
-    }, EXPECT);
+    let _stallIv = null;
+    function _setStall(on){
+      if(on && !_stallIv){ _lastTick = Date.now(); _stallIv = setInterval(()=>{ const now=Date.now(); const gap=now-_lastTick; _lastTick=now; if(gap>STALL) diag("stall.detected",{ms:gap,overBy:gap-EXPECT,toolRunning:A.toolRunning,running:A.running,injecting:A.injecting}); }, EXPECT); }
+      if(!on && _stallIv){ clearInterval(_stallIv); _stallIv=null; }
+    }
+    setInterval(()=> _setStall(A.toolRunning||A.running||A.injecting), 1000);
   }
 
   // Ko-fi tip link.
@@ -760,7 +757,17 @@
         diag("cmd.wrongKey", { name: wk, known: hit, catalogue: A.toolNames.size });
         if (hit) return { kind: "parse_error", reason: "toolKey", raw: r, item: d.item };
       }
-      // NOTE: a site "server busy / something went wrong" notice is deliberately
+      // Claude/Grok/Copilot refusal: says it doesn't have list_commands as a native tool.
+      // That is a misunderstanding - ZeroScript commands are plain JSON you TYPE, not native tools.
+      // Treat this specific refusal as a parse_error so we send a correction and retry.
+      if (/I don't have a tool called/i.test(r) && /list_commands/i.test(r)) {
+        diag("cmd.claudeRefusal", { len: r.length });
+        return { kind: "parse_error", reason: "toolKey", raw: r, item: d.item };
+      }
+      if (/I searched.*connector/i.test(r) && /Roblox/i.test(r)) {
+        diag("cmd.connectorRefusal", { len: r.length });
+        return { kind: "parse_error", reason: "toolKey", raw: r, item: d.item };
+      }
       // NOT special-cased. It falls through to kind:"text" below and simply ENDS
       // the loop as a final answer - no auto-retry. Retrying risked an infinite
       // re-answer loop when the model's OWN prose said "try again", and treating
