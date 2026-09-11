@@ -768,6 +768,10 @@
         diag("cmd.connectorRefusal", { len: r.length });
         return { kind: "parse_error", reason: "toolKey", raw: r, item: d.item };
       }
+      if (/I don't see any.*MCP.*connectors?/i.test(r) || /no.*MCP.*connectors?.*active/i.test(r)) {
+        diag("cmd.mcpNoConnector", { len: r.length });
+        return { kind: "parse_error", reason: "toolKey", raw: r, item: d.item };
+      }
       // NOT special-cased. It falls through to kind:"text" below and simply ENDS
       // the loop as a final answer - no auto-retry. Retrying risked an infinite
       // re-answer loop when the model's OWN prose said "try again", and treating
