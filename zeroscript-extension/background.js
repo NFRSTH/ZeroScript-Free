@@ -17,11 +17,11 @@ const PROVIDER_URLS = ["https://chat.deepseek.com/*", "https://chatgpt.com/*", "
 
 const RECONNECT_MIN = 1000;
 const RECONNECT_MAX = 5000;
-const HEARTBEAT_MS = 10000;
+const HEARTBEAT_MS = 20000;
 // If no message (incl. pong) arrives within this window while we believe we're
 // connected, the socket is half-open: force a reconnect instead of letting
 // pending requests slowly time out.
-const STALE_SOCKET_MS = 25000;
+const STALE_SOCKET_MS = 45000;
 const REQUEST_TIMEOUT_DEFAULT = 130000; // a bit above the 120s tool timeout
 
 let ws = null;
@@ -139,21 +139,14 @@ function stopHeartbeat() {
   heartbeatTimer = null;
 }
 
-// Resolve once the socket is OPEN, or false after `timeout` ms.
 function waitForConnection(timeout = 8000) {
+  if (connected && ws && ws.readyState === WebSocket.OPEN) return Promise.resolve(true);
   return new Promise((resolve) => {
-    if (connected && ws && ws.readyState === WebSocket.OPEN) return resolve(true);
-    connect(); // nudge a (re)connection - important after a worker wake-up
-    const t0 = Date.now();
-    const iv = setInterval(() => {
-      if (connected && ws && ws.readyState === WebSocket.OPEN) {
-        clearInterval(iv);
-        resolve(true);
-      } else if (Date.now() - t0 > timeout) {
-        clearInterval(iv);
-        resolve(false);
-      }
-    }, 100);
+    connect();
+    const onOpen = () => { cleanup(); resolve(true); };
+    const t = setTimeout(() => { cleanup(); resolve(false); }, timeout);
+    function cleanup() { clearTimeout(t); if (ws) ws.removeEventListener('open', onOpen); }
+    if (ws) ws.addEventListener('open', onOpen);
   });
 }
 
@@ -354,8 +347,6 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   return true; // async sendResponse
 });
 
-// Wake/keepalive hooks.
-chrome.runtime.onStartup.addListener(connect);
-chrome.runtime.onInstalled.addListener(connect);
-
-connect();
+chrome.runtime.onStartup.addListener(() => {});
+chrome.runtime.onInstalled.addListener(() => {});
+chrome.tabs.query({ url: PROVIDER_URLS }, (tabs) => { if (tabs.length) connect(); });

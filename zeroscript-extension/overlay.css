@@ -19,8 +19,7 @@
   color: #e8e8ec;
   border: 1px solid rgba(129, 140, 248, 0.30);
   border-radius: 13px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.42);
-  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
   font-size: 12px;
   user-select: none;
 }
@@ -289,9 +288,10 @@ html.zs-light #zs-unstable {
   background: #161618;
   color: #ececee;
   border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
   font-size: 12px;
   animation: zs-pop 0.16s ease-out;
+  will-change: transform, opacity;
 }
 @keyframes zs-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 /* discreet dark scrollbar (default white one looks out of place) */

@@ -141,9 +141,13 @@ const ZSProvider = (() => {
         _snCount = 0; _snMaxMs = 0; _snMaxBlocks = 0; _snWinStart = now;
       }
     };
-    _codeObs = new MutationObserver(snapAll);
+    _codeObs = new MutationObserver(() => {
+      if (document.hidden) return;
+      requestAnimationFrame(snapAll);
+    });
     try {
-      _codeObs.observe(document.body, { subtree: true, childList: true, characterData: true });
+      const container = document.querySelector('.qwen-chat-message-assistant')?.parentElement || document.body;
+      _codeObs.observe(container, { subtree: true, childList: true, characterData: true });
     } catch {}
     snapAll(); // seed any blocks already present
   }

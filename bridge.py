@@ -74,7 +74,7 @@ def _enable_ansi_colors():
 HOST = "127.0.0.1"
 # Keep in sync with zeroscript-extension/manifest.json "version" - printed at
 # startup so a user's terminal output alone tells us which build they're on.
-BRIDGE_VERSION = "1.5.5"
+BRIDGE_VERSION = "1.5.6"
 PORT = int(os.environ.get("ZS_BRIDGE_PORT", "17613"))
 HERE = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(HERE, "config.json")
@@ -223,10 +223,14 @@ def action_banner(lines):
 STUDIO_MCP_PORT = 13469
 
 
+_PORT_OWNER_CACHE = {}
 def _port_owner(port):
-    """(pid, name, path) of the process LISTENING on `port`, or None. Win32 only."""
+    """(pid, name, path) of the process LISTENING on `port`, or None. Win32 only. Cached 3s to avoid netstat storm."""
     if sys.platform != "win32":
         return None
+    now = time.time()
+    if port in _PORT_OWNER_CACHE and now - _PORT_OWNER_CACHE[port][0] < 3.0:
+        return _PORT_OWNER_CACHE[port][1]
     # BOTH stacks: "-p TCP" alone is IPv4-only, and a squatter listening on
     # [::1]:<port> (IPv6 loopback) was then completely invisible to this probe
     # even while Get-NetTCPConnection showed it plainly (the likely reason the
@@ -271,12 +275,19 @@ def _port_owner(port):
             path = ps[1] if len(ps) > 1 else ""
     except Exception:
         pass
-    return (pid, name, path)
+    res = (pid, name, path)
+    _PORT_OWNER_CACHE[port] = (now, res)
+    return res
 
 
+_STUDIO_APP_CACHE = (0, None)
 def _roblox_studio_app_running():
     """True/False whether a real Roblox Studio window process exists, or None
-    if this can't be determined (non-Windows, or the check itself failed)."""
+    if this can't be determined (non-Windows, or the check itself failed). Cached 3s."""
+    global _STUDIO_APP_CACHE
+    now = time.time()
+    if now - _STUDIO_APP_CACHE[0] < 3.0:
+        return _STUDIO_APP_CACHE[1]
     if sys.platform != "win32":
         return None
     try:
@@ -287,7 +298,9 @@ def _roblox_studio_app_running():
         ).stdout
     except Exception:
         return None
-    return "RobloxStudioBeta.exe" in out
+    res = "RobloxStudioBeta.exe" in out
+    _STUDIO_APP_CACHE = (now, res)
+    return res
 
 
 def _kill_orphan_studio_mcp():
@@ -866,13 +879,14 @@ class MCPClient:
                 # A single tools/list then caches an empty list forever. So if we
                 # get nothing, retry for a few seconds to let the backend attach.
                 # Short per-attempt timeout so the bridge never looks frozen if the
-                # server stays silent (e.g. Studio not open yet); ~12s total budget.
-                for _ in range(12):
-                    if self.refresh_tools(timeout=3):
+                for attempt in range(6):
+                    if self.refresh_tools(timeout=2):
                         break
                     if not self.is_alive():
                         break
-                    time.sleep(1.0)
+                    if getattr(self, 'saw_foreign_ws_host', False):
+                        break
+                    time.sleep(0.4 * (1.6 ** attempt))
             log(f"[{self.id}] MCP server up  ({len(self.tools_cache)} tools advertised)", "cy")
 
     def is_alive(self):
@@ -1099,9 +1113,10 @@ class MCPManager:
         self.rebuild_index()
 
     def rebuild_index(self):
-        """Aggregate server tools. Collisions get a 'server/' prefix."""
+        """Aggregate server tools. Collisions get a 'server/' prefix. Also builds reverse index."""
         with self.index_lock:
             self.index = {}
+            self.reverse_index = {}
             for sid, client in self.clients.items():
                 for t in (client.tools_cache or []):
                     name = t.get("name")
@@ -1109,6 +1124,7 @@ class MCPManager:
                         continue
                     advertised = name if name not in self.index else f"{sid}/{name}"
                     self.index[advertised] = (client, name)
+                    self.reverse_index[(client.id, name)] = advertised
 
     def list_tools(self, refresh=False):
         if refresh:
@@ -1122,16 +1138,12 @@ class MCPManager:
                     log(f"[{sid}] refresh failed: {e}", "yl")
             self.rebuild_index()
         out = []
+        with self.index_lock:
+            rev = dict(getattr(self, 'reverse_index', {}))
         for sid, client in self.clients.items():
             for t in (client.tools_cache or []):
                 name = t.get("name")
-                advertised = name
-                with self.index_lock:
-                    # find the advertised key that maps to this (client, name)
-                    for k, (holder, real) in self.index.items():
-                        if holder is client and real == name:
-                            advertised = k
-                            break
+                advertised = rev.get((client.id, name), name)
                 tt = dict(t)
                 tt["name"] = advertised
                 tt["server"] = sid
@@ -1197,9 +1209,14 @@ NO_PLACE_MARKERS = ("doesn't have a place", "no place opened", "place opened",
                     "has disconnected", "no active studio")
 
 
+_PROBE_CACHE = (0, None)
 def _probe_tool_text(tool):
     """Call a side-effect-free probe tool with no args; return its text, or None if
-    the tool is unavailable / the server is busy / it errored (best-effort)."""
+    the tool is unavailable / the server is busy / it errored (best-effort). TTL 2s."""
+    global _PROBE_CACHE
+    now = time.time()
+    if tool == STUDIO_PROBE_TOOL and _PROBE_CACHE[1] is not None and now - _PROBE_CACHE[0] < 2.0:
+        return _PROBE_CACHE[1]
     with mgr.index_lock:
         entry = mgr.index.get(tool)
     if entry is None:
@@ -1211,11 +1228,14 @@ def _probe_tool_text(tool):
     try:
         if not holder.is_alive():
             return None
-        msg = holder._request("tools/call", {"name": real_name, "arguments": {}}, timeout=8)
+        msg = holder._request("tools/call", {"name": real_name, "arguments": {}}, timeout=4)
         if not msg or msg.get("error"):
             return None
         content = msg.get("result", {}).get("content", [])
-        return "\n".join(it.get("text", "") for it in content if it.get("type") == "text")
+        txt = "\n".join(it.get("text", "") for it in content if it.get("type") == "text")
+        if tool == STUDIO_PROBE_TOOL:
+            _PROBE_CACHE = (now, txt)
+        return txt
     except Exception:
         return None
     finally:

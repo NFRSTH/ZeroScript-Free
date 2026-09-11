@@ -54,9 +54,20 @@ def _resolve_override_path(path_value: str) -> Optional[Path]:
     return None
 
 
+_FIND_CACHE = (0, None)  # (timestamp, Path|None) cache 60s
 def _newest_path(paths: Iterable[Path]) -> Optional[Path]:
     try:
-        return max(paths, key=lambda p: p.stat().st_mtime)
+        best = None
+        best_mtime = -1
+        for p in paths:
+            try:
+                m = p.stat().st_mtime
+            except OSError:
+                continue
+            if m > best_mtime:
+                best_mtime = m
+                best = p
+        return best
     except (ValueError, OSError):
         return None
 
@@ -73,7 +84,12 @@ def _find_studio_mcp_windows() -> Optional[Path]:
     We only consider version folders that ALSO contain a current Studio
     executable, and prefer the newest of those. We keep zombie StudioMCP.exe
     paths only as a last-resort fallback if no paired install exists.
+    Optimized with os.scandir and single stat per dir.
     """
+    import time as _t
+    global _FIND_CACHE
+    if _FIND_CACHE[1] is not None and _t.time() - _FIND_CACHE[0] < 60 and _FIND_CACHE[1].exists():
+        return _FIND_CACHE[1]
     paired: list[Path] = []
     orphans: list[Path] = []
     for root in _candidate_roots():
@@ -92,7 +108,10 @@ def _find_studio_mcp_windows() -> Optional[Path]:
                     orphans.append(studio_mcp)
         except OSError:
             continue
-    return _newest_path(paired) or _newest_path(orphans)
+    res = _newest_path(paired) or _newest_path(orphans)
+    import time as _t2
+    _FIND_CACHE = (_t2.time(), res)
+    return res
 
 
 def _mac_app_candidates() -> list[Path]:

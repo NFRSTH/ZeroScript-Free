@@ -27,14 +27,18 @@ const ZSParse = (() => {
   // where len is the marker's own length to skip past it and dm the requested
   // datamodel ("Edit" when unspecified).
   function findLuaStart(text, from = 0) {
-    const m = LUA_START_RE.exec(text.slice(from));
-    return m ? { pos: from + m.index, len: m[0].length, dm: dmName(m[1]) } : { pos: -1, len: 0, dm: LUA_DEFAULT_DM };
+    if (text.length < 10) return { pos: -1, len: 0, dm: LUA_DEFAULT_DM };
+    LUA_START_RE.lastIndex = from;
+    const m = LUA_START_RE.exec(text);
+    return m ? { pos: m.index, len: m[0].length, dm: dmName(m[1]) } : { pos: -1, len: 0, dm: LUA_DEFAULT_DM };
   }
 
   // Find the first LUA end marker at or after `from`. Returns its start index or -1.
   function findLuaEnd(text, from = 0) {
-    const m = LUA_END_RE.exec(text.slice(from));
-    return m ? from + m.index : -1;
+    if (text.length < 10) return -1;
+    LUA_END_RE.lastIndex = from;
+    const m = LUA_END_RE.exec(text);
+    return m ? m.index : -1;
   }
 
   // Strip a code-block UI label (the "Copy" button caption, or a leftover fence
@@ -79,6 +83,7 @@ const ZSParse = (() => {
   const DSML_RE = /<[\s\/]*[|｜][\s|｜]*DSML[\s|｜]*[|｜]/i;
 
   function hasToolSignature(r) {
+    if (!r || r.length < 20) return false;
     return (
       r.includes(START_M) ||
       r.includes("MCP_TOOL") ||
@@ -91,7 +96,7 @@ const ZSParse = (() => {
   // (a ###LUA### / ###MCP_TOOL### opener with no matching end marker). Used by the
   // response watcher to avoid finalizing a command that is still being streamed.
   function hasOpenToolBlock(r) {
-    if (!r) return false;
+    if (!r || r.length < 20) return false;
     const { pos: ls, len } = findLuaStart(r);
     if (ls !== -1 && findLuaEnd(r, ls + len) === -1) return true;
     const sm = r.indexOf(START_M);

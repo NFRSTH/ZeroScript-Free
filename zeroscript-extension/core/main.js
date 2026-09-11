@@ -41,7 +41,8 @@
   const ZS_DIAG_MAX = 300;
   const _diag = [];
   function diag(event, data) {
-    const snap = { ...P.snapshot(), gen: P.isGenerating(), run: A.running };
+    let snap = {};
+    try { snap = { ...P.snapshot(), gen: P.isGenerating(), run: typeof A !== 'undefined' ? A.running : false }; } catch {}
     const e = { t: Date.now(), iso: new Date().toISOString().slice(11, 23), event,
                 data: data || null, snap };
     _diag.push(e);
@@ -54,7 +55,6 @@
     } catch {}
     try { window.__zsDiag = _diag; } catch {}
   }
-  P.init({ diag });
 
   // ── [TRACE] Main-thread stall detector ─────────────────────────────────────
   // The reported bug ("tools spin 15-20s, the chip timer stops rising") can only
@@ -65,17 +65,19 @@
   // the user sees the freeze = the smoking gun; correlate its timestamp with the
   // surrounding diag events (esp. code.snapAll / dom.read.slow) to see WHAT ran.
   {
-    const EXPECT = 250, STALL = 800; // only log gaps beyond this many ms
+    const EXPECT = 250, STALL = 800;
     let _lastTick = Date.now();
-    setInterval(() => {
-      const now = Date.now();
-      const gap = now - _lastTick;
-      _lastTick = now;
-      if (gap > STALL) {
-        diag("stall.detected", { ms: gap, overBy: gap - EXPECT,
-          toolRunning: A.toolRunning, running: A.running, injecting: A.injecting });
-      }
-    }, EXPECT);
+    let _stallIv = null;
+    function _toggleStall(on){
+      if (on && !_stallIv) _stallIv = setInterval(() => {
+        const now = Date.now();
+        const gap = now - _lastTick;
+        _lastTick = now;
+        if (gap > STALL) diag("stall.detected", { ms: gap, overBy: gap - EXPECT, toolRunning: A.toolRunning, running: A.running, injecting: A.injecting });
+      }, EXPECT);
+      if (!on && _stallIv) { clearInterval(_stallIv); _stallIv=null; }
+    }
+    setInterval(()=> _toggleStall(A.running || A.toolRunning), 1000);
   }
 
   // Ko-fi tip link.
@@ -185,6 +187,7 @@
     // Timestamp of the last successful tool-catalogue refresh (see ensureTools).
     toolsAt: 0,
   };
+  try { P.init({ diag }); } catch {}
 
   async function waitFor(pred, timeout) {
     const t0 = Date.now();
@@ -845,12 +848,13 @@
   // an image (see runTool's r.images branch) - the reload-proof signal, readable
   // straight from the injected result turn's text even when no loop is running.
   const IMAGE_FEEDBACK_RE = /image is attached to THIS message/i;
+  let _imgSaveDebounce=null;
   function rememberImageTool(name) {
     const bare = bareToolName(name);
     if (!bare || A.imageTools.has(bare)) return;
     A.imageTools.add(bare);
     diag("imageTool.remember", { name: bare, total: A.imageTools.size });
-    try { chrome.storage.local.set({ zsImageTools: [...A.imageTools].slice(-200) }); } catch {}
+    clearTimeout(_imgSaveDebounce); _imgSaveDebounce=setTimeout(()=>{ try { chrome.storage.local.set({ zsImageTools: [...A.imageTools].slice(-200) }); } catch {} },1500);
   }
   try {
     chrome.storage.local.get("zsImageTools", (r) => {
@@ -1712,11 +1716,12 @@
   // the threshold was never seen at the moment it mattered (caught live: 12 tool
   // results, counter still reading 11, no rider). Storage is a durability
   // mechanism here, not the source of truth for the current tick.
+  let _saveDebounce=null;
   function bumpSys(field) {
     if (!RESEND_SYS_EVERY) return;
     if (sysCountKey !== sysKey()) { sysCountKey = sysKey(); }
     sysCount[field]++;
-    saveSysCount();
+    clearTimeout(_saveDebounce); _saveDebounce=setTimeout(saveSysCount,2000);
   }
   function resetSysCount() {
     sysCount = { users: 0, results: 0 };
@@ -2614,7 +2619,10 @@
       }, true);
 
       applyTheme();
-      setInterval(applyTheme, 2000); // follow the host page toggling its theme
+      try {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', applyTheme);
+        new MutationObserver(applyTheme).observe(document.documentElement,{attributes:true, attributeFilter:['class','data-theme']});
+      } catch { setInterval(applyTheme, 5000); }
       renderBar();
       placeBar(); // start the per-frame anchoring loop
     }
@@ -4223,13 +4231,15 @@
     }
   }
   const mo = new MutationObserver(() => {
-    preHideWholeItems();
-    scheduleSweep();
+    if (document.hidden) return;
+    requestAnimationFrame(() => { preHideWholeItems(); scheduleSweep(); });
   });
   mo.observe(document.documentElement, { childList: true, subtree: true });
-  // Belt-and-braces: a low-frequency sweep regardless of tab visibility or
-  // mutation timing, so camouflage always converges.
-  setInterval(scheduleSweep, 1500);
+  let _sweepIv = null;
+  setInterval(() => {
+    if (A.running && !document.hidden && !_sweepIv) _sweepIv = setInterval(scheduleSweep, 1500);
+    if ((!A.running || document.hidden) && _sweepIv) { clearInterval(_sweepIv); _sweepIv=null; }
+  }, 1000);
   // When the user returns to the tab, immediately refresh camouflage/state.
   document.addEventListener("visibilitychange", () => { if (!document.hidden) scheduleSweep(); });
 
