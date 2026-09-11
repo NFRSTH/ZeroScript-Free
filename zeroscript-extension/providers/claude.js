@@ -6,9 +6,9 @@ const ZSProvider = (() => {
   let diag = () => {};
   const S = {
     chatItem: 'div[data-is-streaming], div[data-testid*="message"], div.font-claude-message, [role="article"]',
-    input: 'div[contenteditable="true"][data-placeholder], div[contenteditable="true"], textarea[placeholder*="Talk"], p[data-placeholder]',
-    sendBtn: 'button[aria-label*="Send"], button[data-testid*="send"]',
-    stopBtn: 'button[aria-label*="Stop"], button[data-testid*="stop"]',
+    input: '[contenteditable], textarea, [role="textbox"], div[contenteditable="true"], div[contenteditable="false"]',
+    sendBtn: 'button[aria-label*="Send"], button[data-testid*="send"], button[aria-label*="Send message"]',
+    stopBtn: 'button[aria-label*="Stop"], button[data-testid*="stop"], button[aria-label*="Stop response"]',
     errorSurfaces: '[role="alert"],[class*="toast"],[class*="error"]',
     reasoning: '[class*="thinking"],[data-testid*="thinking"]',
   };
@@ -29,7 +29,7 @@ const ZSProvider = (() => {
   const lastAssistant = () => { const a=assistantItems(); return a.length?a[a.length-1]:null; };
   const _idMap=new WeakMap(); let _seq=0; function lastAssistantId(){ const it=lastAssistant(); if(!it) return null; let id=_idMap.get(it); if(!id){id=++_seq; _idMap.set(it,id);} return id; }
   const chatIsEmpty=()=> allItems().length===0;
-  const getEditor=()=>{ const els=[...document.querySelectorAll(S.input)].filter(e=>!e.closest('#zs-root') && e.offsetParent!==null); return els[0]||document.querySelector('div[contenteditable="true"]')||null; };
+  const getEditor=()=>{ const els=[...document.querySelectorAll('[contenteditable], textarea, [role="textbox"]')].filter(e=>!e.closest('#zs-root')); return els.find(e=>e.offsetParent!==null && (e.textContent!==undefined))||els[0]||document.querySelector('div[contenteditable]')||null; };
   const editorText=()=>{ const e=getEditor(); if(!e) return ""; return e.textContent||e.value||""; };
   let _locked=false; function setInputLock(on){ _locked=on; const e=getEditor(); if(!e) return; e.setAttribute('contenteditable', on?'false':'true'); }
   const composerFrame=()=> { const e=getEditor(); return e?e.parentElement:null; };
@@ -53,5 +53,5 @@ const ZSProvider = (() => {
   const conversationKey=()=> location.pathname;
   function installSendHooks(h){ document.addEventListener("keydown",e=>{ if(e.key!=="Enter"||e.shiftKey) return; const ed=getEditor(); if(!ed||!ed.contains(e.target)) return; if(editorText().trim()==="") return; if(h.isBlocked()) return; if(!h.isStarted()){ if(!chatIsEmpty()) return; h.onBlockedAttempt(); return; } h.onUserMessage(assistantCount()); },true); document.addEventListener("click",e=>{ const b=e.target&&e.target.closest&&e.target.closest('button'); if(!b) return; if(isStopBtn(b)){h.onNativeStop(); return;} if(!b.matches(S.sendBtn)) return; if(h.isBlocked()) return; h.onUserMessage(assistantCount()); },true); }
   function findToolBlockSpot(item,chip){ const P=ZSParse; const hasStart=t=>P.LUA_START_RE.test(t)||t.includes("###mcp_tool###"); const isJson=t=>/\{\s*"(?:command|tool)"\s*:/.test(t); for(const c of [...item.querySelectorAll('pre,code')]){ const txt=c.textContent||""; if(hasStart(txt)||isJson(txt)){ c.classList.add("zs-tool-hide"); return {parent:c.parentElement, ref:c}; } } return null; }
-  return { id:"claude", displayName:"Claude", get supportsVision(){return true;}, timings, thinkingSel: S.reasoning, init({diag:d}={}){ if(d) diag=d; }, allItems, isUserItem, isAssistantItem, itemText, classifyText, assistantCount, userCount, lastAssistant, lastAssistantId, readAssistant, streamLen:(it)=> (it?it.textContent.length:0), snapshot, getEditor, editorText, chatIsEmpty, isFreshChat:()=>chatIsEmpty()&&!!getEditor(), composerFrame, barMount, setInputLock, typeAndSend, stopGeneration, isGenerating, isBusyNow, isHardGenerating, genDebug:()=>({gen:isGenerating()}), enforceComposer:()=>({ready:!!getEditor()}), ensureComposerReady:async()=>({ready:!!getEditor()}), turnHalted:()=>false, findContinueBtn, clickContinueBtn, scanError, isTooLongMsg, isBusyMsg, attachImages, clearAttachments, conversationKey, installSendHooks, findToolBlockSpot };
+  return { id:"claude", displayName:"Claude", get supportsVision(){return true;}, timings, thinkingSel: S.reasoning, init({diag:d}={}){ if(d) diag=d; try{document.documentElement.setAttribute("data-zs-claude-ver","1");}catch{} }, allItems, isUserItem, isAssistantItem, itemText, classifyText, assistantCount, userCount, lastAssistant, lastAssistantId, readAssistant, streamLen:(it)=> (it?it.textContent.length:0), snapshot, getEditor, editorText, chatIsEmpty, isFreshChat:()=>chatIsEmpty()&&!!getEditor(), composerFrame, barMount, setInputLock, typeAndSend, stopGeneration, isGenerating, isBusyNow, isHardGenerating, genDebug:()=>({gen:isGenerating()}), enforceComposer:()=>({ready:!!getEditor()}), ensureComposerReady:async(reason)=>{ return {ready:!!getEditor()}; }, turnHalted:()=>false, findContinueBtn, clickContinueBtn, scanError, isTooLongMsg, isBusyMsg, attachImages, clearAttachments, conversationKey, installSendHooks, findToolBlockSpot };
 })();
