@@ -64,7 +64,20 @@ const ZSProvider = (() => {
   function isStopBtn(b){ if(!b) return false; return /stop/i.test(b.getAttribute('aria-label')||'')|| /stop/i.test(b.getAttribute('data-testid')||'') || !!b.querySelector('rect'); }
   let _max=-1,_at=0,_item=null; function sample(){ const it=lastAssistant(); const len=(it?it.textContent.length:0); const now=Date.now(); if(it!==_item||len<_max-400){_item=it;_max=len;_at=now;return;} if(len>_max){_max=len;_at=now;} }
   const grewWithin=(ms)=> _max>1 && Date.now()-_at<ms;
-  function isGenerating(){ sample(); const hasStop=!!document.querySelector('button[aria-label*="Stop"]') || (!!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn))); if(hasStop) return grewWithin(timings.GEN_IDLE_MS); return grewWithin(timings.GEN_IDLE_MS); }
+  let _stopSince=0;
+  function isGenerating(){
+    sample();
+    const hasStop=!!document.querySelector('button[aria-label*="Stop"]') || (!!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn)));
+    const now=Date.now();
+    if(hasStop){
+      if(!_stopSince) _stopSince=now;
+      if(grewWithin(timings.GEN_IDLE_MS) || now - _stopSince < 2000) return true;
+      if(now - _stopSince > 10000) { _stopSince=0; return grewWithin(timings.GEN_IDLE_MS); }
+      return grewWithin(timings.GEN_IDLE_MS);
+    }
+    _stopSince=0;
+    return grewWithin(timings.GEN_IDLE_MS);
+  }
   const isBusyNow=isGenerating; const isHardGenerating=()=> !!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn));
   function snapshot(){ try{ const it=lastAssistant(); return {rp: it?(it.textContent||'').length:0}; }catch{ return {}; } }
   function findContinueBtn(){ for(const b of document.querySelectorAll('button')){ if(b.offsetParent===null) continue; if(/continue/i.test((b.innerText||'').trim())) return b; } return null; }
@@ -109,17 +122,21 @@ const ZSProvider = (() => {
       }
     }
     await sleep(200);
-    await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && !b.disabled && b.getAttribute('aria-disabled')!=='true' && b.offsetParent!==null; },2500);
-    const b=document.querySelector(S.sendBtn);
-    if(b && !b.disabled && b.getAttribute('aria-disabled')!=='true' && b.offsetParent!==null){
-      try{ b.click(); }catch{}
-      return;
-    }
+    const hasText = () => editorText().trim().length>0;
+    await waitFor(hasText, 1000);
     try{
-      const t=ed.isContentEditable?ed:document.querySelector('textarea[data-testid="composer-input"]')||ed;
-      t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,bubbles:true}));
-      t.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,bubbles:true}));
+      const t=document.querySelector('textarea[data-testid="composer-input"]')||ed;
+      t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13, which:13, bubbles:true, cancelable:true}));
+      t.dispatchEvent(new KeyboardEvent('keypress',{key:'Enter',code:'Enter',keyCode:13, which:13, bubbles:true, cancelable:true}));
+      t.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13, which:13, bubbles:true, cancelable:true}));
     }catch{}
+    await sleep(300);
+    if(hasText()){
+      const b=document.querySelector(S.sendBtn);
+      if(b && b.offsetParent!==null){
+        try{ b.click(); }catch{}
+      }
+    }
   }
   const stopGeneration=()=>{ const b=document.querySelector(S.stopBtn); if(b && isStopBtn(b)) try{b.click();}catch{} };
   function scanError(){ try{ for(const el of document.querySelectorAll(S.errorSurfaces)){ if(el.offsetParent===null) continue; const t=(el.innerText||'').trim(); if(t.length>8&&t.length<600&&RE.contextLimit.test(t)) return t.slice(0,240); } }catch{} if(!getEditor()) return "Input disappeared"; return null; }

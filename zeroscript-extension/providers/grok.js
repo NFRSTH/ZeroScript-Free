@@ -83,10 +83,18 @@ const ZSProvider = (() => {
   function isStopBtn(b){ if(!b) return false; return /stop/i.test(b.getAttribute('aria-label')||'')|| /stop/i.test(b.getAttribute('data-testid')||'') || !!b.querySelector('rect'); }
   let _max=-1,_at=0,_item=null; function sample(){ const it=lastAssistant(); const len=(it?it.textContent.length:0); const now=Date.now(); if(it!==_item||len<_max-400){_item=it;_max=len;_at=now;return;} if(len>_max){_max=len;_at=now;} }
   const grewWithin=(ms)=> _max>1 && Date.now()-_at<ms;
+  let _stopSince=0;
   function isGenerating(){
     sample();
     const hasStop=!!document.querySelector('button[aria-label*="Stop"], button[data-testid*="stop"], button[aria-label="Stop generating"], .animate-spin, [class*="loading"], [class*="animate-pulse"]') || (!!document.querySelector('button[data-testid="chat-submit"]') && /stop/i.test(document.querySelector('button[data-testid="chat-submit"]')?.getAttribute('aria-label')||'')) || (!!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn)));
-    if(hasStop) return grewWithin(timings.GEN_IDLE_MS);
+    const now=Date.now();
+    if(hasStop){
+      if(!_stopSince) _stopSince=now;
+      if(grewWithin(timings.GEN_IDLE_MS) || now - _stopSince < 2000) return true;
+      if(now - _stopSince > 10000) { _stopSince=0; return grewWithin(timings.GEN_IDLE_MS); }
+      return grewWithin(timings.GEN_IDLE_MS);
+    }
+    _stopSince=0;
     return grewWithin(timings.GEN_IDLE_MS);
   }
   const isBusyNow=isGenerating; const isHardGenerating=()=> !!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn));
