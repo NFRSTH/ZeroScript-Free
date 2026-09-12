@@ -29,9 +29,15 @@ const ZSProvider = (() => {
   const lastAssistant = () => { const a=assistantItems(); return a.length?a[a.length-1]:null; };
   const _idMap=new WeakMap(); let _seq=0; function lastAssistantId(){ const it=lastAssistant(); if(!it) return null; let id=_idMap.get(it); if(!id){id=++_seq; _idMap.set(it,id);} return id; }
   const chatIsEmpty=()=> allItems().length===0;
-  const getEditor=()=>{ const els=[...document.querySelectorAll('[contenteditable], textarea, [role="textbox"]')].filter(e=>!e.closest('#zs-root')); return els.find(e=>e.offsetParent!==null && (e.textContent!==undefined))||els[0]||document.querySelector('div[contenteditable]')||null; };
-  const editorText=()=>{ const e=getEditor(); if(!e) return ""; return e.textContent||e.value||""; };
-  let _locked=false; function setInputLock(on){ _locked=on; const e=getEditor(); if(!e) return; e.setAttribute('contenteditable', on?'false':'true'); }
+  const editorEls=()=> [...document.querySelectorAll('[contenteditable], textarea, [role="textbox"]')].filter(e=>!e.closest('#zs-root'));
+  const isTextareaEditor=(e)=> !!e && e.tagName==='TEXTAREA';
+  const getEditor=()=>{
+    const all=editorEls();
+    return all.find(e=> !isTextareaEditor(e) && e.offsetParent!==null) || all.find(e=> e.offsetParent!==null) || all[0] || document.querySelector('div[contenteditable]') || null;
+  };
+  const writeEl=()=> editorEls().find(isTextareaEditor) || getEditor();
+  const editorText=()=>{ const e=writeEl(); if(!e) return ""; return isTextareaEditor(e)? (e.value||"") : (e.textContent||""); };
+  let _locked=false; function setInputLock(on){ _locked=on; const div=getEditor(); if(div && !isTextareaEditor(div)) div.setAttribute('contenteditable', on?'false':'true'); const ta=writeEl(); if(ta && isTextareaEditor(ta)){ if(on) ta.setAttribute('readonly',''); else ta.removeAttribute('readonly'); } }
   const composerFrame=()=> { const e=getEditor(); return e?e.parentElement:null; };
   function barMount(){ const e=getEditor(); if(!e) return null; let box=e.parentElement; while(box && box!==document.body){ if(box.contains(e)) break; box=box.parentElement; } if(!box) box=e.parentElement; let before=box.firstElementChild; if(before&&before.id==='zs-bar') before=before.nextElementSibling; return {parent:box, before, inside:true}; }
   function isStopBtn(b){ if(!b) return false; return /stop/i.test(b.getAttribute('aria-label')||'')|| !!b.querySelector('rect'); }
@@ -45,38 +51,41 @@ const ZSProvider = (() => {
   function readAssistant(){ const it=lastAssistant(); if(!it) return {present:false, reply:"",thinking:"",item:null}; return {present:true, reply: it.textContent.trim(), thinking:"", item:it}; }
   async function waitFor(p,t){ const t0=Date.now(); while(Date.now()-t0<t){ if(p()) return true; await sleep(120);} return false; }
   async function typeAndSend(text,images){
-    const ed=getEditor(); if(!ed) throw new Error('Claude input not found');
+    // Use writeEl (hidden textarea mirror if present) for reliable injection of large ⟦ZS-SYS⟧ prompt
+    const edWrite = writeEl(); const edVisible = getEditor();
+    if(!edWrite) throw new Error('Claude input not found');
+    const ed = edWrite;
     ed.focus();
-    // Try execCommand first (works for most contenteditable)
-    let ok=false;
-    try{ document.execCommand('selectAll',false,null); }catch{}
-    try{ ok=document.execCommand('insertText',false,text); }catch{}
-    await sleep(150);
-    // Fallback if execCommand failed or truncated (Claude Lexical strips ⟦ or large text)
-    if(!ok || editorText().trim().length < Math.min(text.length*0.8, 100)){
-      try{
-        if(ed.isContentEditable){
-          // Direct textContent + input events for Lexical
-          ed.textContent = "";
-          // Insert as single text node to preserve ⟦ZS-SYS⟧ and newlines
+    // For textarea mirror (Meta-style), native setter drives Lexical
+    if(isTextareaEditor(ed)){
+      const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype;
+      const setter=proto&&Object.getOwnPropertyDescriptor(proto,'value');
+      if(setter&&setter.set) setter.set.call(ed,text); else ed.value=text;
+      ed.dispatchEvent(new Event('input',{bubbles:true}));
+      ed.dispatchEvent(new Event('change',{bubbles:true}));
+    } else {
+      // contenteditable Lexical: try execCommand first
+      let ok=false;
+      try{ document.execCommand('selectAll',false,null); }catch{}
+      try{ ok=document.execCommand('insertText',false,text); }catch{}
+      await sleep(150);
+      if(!ok || editorText().trim().length < Math.min(text.length*0.8, 100)){
+        try{
           ed.textContent = text;
           ed.dispatchEvent(new InputEvent('input',{bubbles:true, data:text, inputType:'insertText'}));
           ed.dispatchEvent(new Event('change',{bubbles:true}));
-          // Also try clipboard paste path for Lexical which listens to beforeinput
-          try{ ed.dispatchEvent(new ClipboardEvent('paste',{bubbles:true, clipboardData: new DataTransfer()})); }catch{}
-        } else {
-          const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype;
-          const s=proto&&Object.getOwnPropertyDescriptor(proto,'value');
-          if(s&&s.set) s.set.call(ed,text); else ed.value=text;
-          ed.dispatchEvent(new Event('input',{bubbles:true}));
-        }
-      }catch{}
-      await sleep(150);
+        }catch{}
+        await sleep(150);
+      }
     }
-    await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && !b.disabled && b.getAttribute('aria-disabled')!=='true'; },1200);
+    // Ensure visible editor also reflects text for send enable check
+    try{ if(edVisible && edVisible!==ed && edVisible.isContentEditable) edVisible.focus(); }catch{}
+    await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && !b.disabled && b.getAttribute('aria-disabled')!=='true'; },1500);
     const b=document.querySelector(S.sendBtn);
-    if(b && !b.disabled && b.getAttribute('aria-disabled')!=='true'){ try{b.click();}catch{} }
-    else { try{ ed.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13, bubbles:true})); }catch{} }
+    if(b && !b.disabled && b.getAttribute('aria-disabled')!=='true'){ try{b.click();}catch{} return; }
+    // Fallback Enter on visible editor
+    const target = edVisible || ed;
+    try{ target.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13, bubbles:true})); target.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13, bubbles:true})); }catch{}
   }
   const stopGeneration=()=>{ const b=document.querySelector(S.stopBtn); if(isStopBtn(b)) try{b.click();}catch{} };
   function scanError(){ try{ for(const el of document.querySelectorAll(S.errorSurfaces)){ if(el.offsetParent===null) continue; const t=(el.innerText||'').trim(); if(t.length>8&&t.length<600&&RE.contextLimit.test(t)) return t.slice(0,240); } }catch{} if(!getEditor()) return "Input disappeared"; return null; }
