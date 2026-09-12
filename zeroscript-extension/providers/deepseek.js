@@ -673,7 +673,7 @@ const ZSProvider = (() => {
     promptExtra,
     init({ diag: d } = {}) {
       if (d) diag = d;
-      try { document.documentElement.setAttribute("data-zs-ds-ver", "2026-09_auto-adapt-full-rewrite"); } catch {}
+      
       diag("ds.init", { ver: "auto-adapt", unified: composerModeState().unified });
     },
     allItems, isUserItem, isAssistantItem, itemText, classifyText,

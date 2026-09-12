@@ -849,7 +849,7 @@ const ZSProvider = (() => {
   // BUMP this whenever qwen.js changes in a way worth verifying live.
   const QWEN_VER = "2026-07_per-model-vision3";
   function setVersionBeacon() {
-    try { document.documentElement.setAttribute("data-zs-qwen-ver", QWEN_VER); } catch {}
+    
   }
 
   // NOTE: an "⚠ unstable" badge used to be injected next to Qwen's "Auto"/"Think"

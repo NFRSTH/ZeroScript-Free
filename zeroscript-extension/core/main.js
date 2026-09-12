@@ -16,7 +16,7 @@
   const P = ZSProvider;
   const T = P.timings;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const log = (...a) => console.log("[zeroscript]", ...a);
+  const log = () => {};
 
   // ── Anti-bot mitigation (EXPERIMENTAL) ──────────────────────────────────
   // Suspected contributor to Arena's captcha: the agentic loop sends turns
@@ -33,37 +33,8 @@
     return sleep(lo + Math.random() * (hi - lo));
   }
 
-  // ── Diagnostics ───────────────────────────────────────────────────────────
-  // Persistent, lightweight breadcrumb log of the agentic loop's key decisions
-  // (sends, response kinds, tool start/end, resumes, stops). Read back from the
-  // console (filter "[zs-diag]") or window.__zsDiag (also mirrored onto a hidden
-  // DOM node for a main-world inspector). Each entry carries a turn snapshot.
-  const ZS_DIAG_MAX = 300;
   const _diag = [];
-  function diag(event, data) {
-    let snap = {};
-    try {
-      const base = P.snapshot();
-      const gen = P.isGenerating();
-      const run = typeof A !== 'undefined' ? A.running : false;
-      snap = { ...base, gen, run };
-    } catch (e) {
-      // Only hide TDZ on A; re-log provider errors
-      if (!String(e && e.message || e).includes('A')) console.error('[zs-diag] snapshot failed', e);
-      try { snap = { ...P.snapshot(), gen: P.isGenerating(), run: false }; } catch {}
-    }
-    const e = { t: Date.now(), iso: new Date().toISOString().slice(11, 23), event,
-                data: data || null, snap };
-    _diag.push(e);
-    if (_diag.length > ZS_DIAG_MAX) _diag.shift();
-    try { console.log("[zs-diag]", e.iso, event, JSON.stringify({ ...data, ...snap })); } catch {}
-    try {
-      let n = document.getElementById("zs-diag-log");
-      if (!n) { n = document.createElement("script"); n.type = "application/json"; n.id = "zs-diag-log"; (document.body || document.documentElement).appendChild(n); }
-      n.textContent = JSON.stringify(_diag);
-    } catch {}
-    try { window.__zsDiag = _diag; } catch {}
-  }
+  function diag(){}
   P.init({ diag });
 
   // ── [TRACE] Main-thread stall detector ─────────────────────────────────────
@@ -2174,6 +2145,7 @@
 
       // 1. System-prompt bootstrap turn → animated while starting, gear when done.
       if (txt.includes(ZS.SYS_MARKER)) {
+        if (P.id === "grok") return;
         const phase = A.starting ? "run" : "sys";
         if (item.dataset.zs !== "sys" || item.dataset.zphase !== phase || chipGone) {
           this.chip(item, { label: "Starting Up", category: "tool", phase, cls: "sys", whole: true });
