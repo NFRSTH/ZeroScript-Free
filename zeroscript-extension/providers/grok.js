@@ -18,11 +18,16 @@ const ZSProvider = (() => {
     busy: /server is busy|try again later|rate limit/i,
   };
   const timings = { GEN_IDLE_MS: 1500, REASON_IDLE_MS: 12000, WARMUP_MS: 45000, REASON_NOREPLY_MS: 90000, STABLE_MS: 9000, RESPONSE_TIMEOUT_MS: 300000 };
-  const allItems = () => [...document.querySelectorAll(S.chatItem)].filter(e=> !e.closest('#zs-root') && (e.textContent||'').trim().length>5);
-  const isAssistantItem = (it) => !!it && (it.querySelector('[class*="assistant"]') || /grok/i.test(it.className));
+  const allItems = () => {
+    let items=[...document.querySelectorAll(S.chatItem)].filter(e=> !e.closest('#zs-root') && (e.textContent||'').trim().length>5);
+    if(items.length<2) items=[...document.querySelectorAll('main [role="article"], main div')].filter(e=> !e.closest('#zs-root') && (e.textContent||'').trim().length>30 && e.children.length<10);
+    return items;
+  };
+  const isAssistantItem = (it) => !!it && (it.matches('[data-testid*="assistant"]') || it.querySelector('[class*="assistant"]') || /grok|assistant/i.test(it.className) || it.getAttribute('data-message-author-role')==='assistant');
   const isUserItem = (it) => !!it && !isAssistantItem(it);
-  function itemText(it){ if(!it) return ""; const c=it.cloneNode(true); c.querySelectorAll('.zs-chip').forEach(n=>n.remove()); return c.textContent||""; }
-  function classifyText(it,ex){ return itemText(it); }
+  function textWithout(root, ex){ if(!root) return ""; const c=root.cloneNode(true); c.querySelectorAll('.zs-chip'+(ex?','+ex:'')).forEach(n=>n.remove()); return c.textContent||""; }
+  function itemText(it){ if(!it) return textWithout(it); return textWithout(it); }
+  function classifyText(it,ex){ if(!it) return ""; return textWithout(it, ex); }
   const assistantItems = () => allItems().filter(isAssistantItem);
   const assistantCount = () => assistantItems().length;
   const userCount = () => allItems().filter(isUserItem).length;
@@ -37,12 +42,12 @@ const ZSProvider = (() => {
   function isStopBtn(b){ if(!b) return false; return /stop/i.test(b.getAttribute('aria-label')||'')|| !!b.querySelector('rect'); }
   let _max=-1,_at=0,_item=null; function sample(){ const it=lastAssistant(); const len=(it?it.textContent.length:0); const now=Date.now(); if(it!==_item||len<_max-400){_item=it;_max=len;_at=now;return;} if(len>_max){_max=len;_at=now;} }
   const grewWithin=(ms)=> _max>1 && Date.now()-_at<ms;
-  function isGenerating(){ if(document.querySelector('button[aria-label*="Stop"]')) return true; const b=document.querySelector(S.stopBtn); if(isStopBtn(b)) return true; sample(); return grewWithin(timings.GEN_IDLE_MS); }
+  function isGenerating(){ if(document.querySelector('button[aria-label*="Stop"], [data-testid*="stop"], .animate-spin, [class*="loading"]')) return true; const b=document.querySelector(S.stopBtn); if(b && isStopBtn(b) && b.offsetParent!==null) return true; sample(); return grewWithin(timings.GEN_IDLE_MS); }
   const isBusyNow=isGenerating; const isHardGenerating=()=> !!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn));
   function snapshot(){ try{ const it=lastAssistant(); return {rp: it?(it.textContent||'').length:0}; }catch{ return {}; } }
   function findContinueBtn(){ for(const b of document.querySelectorAll('button')){ if(b.offsetParent===null) continue; if(/continue/i.test((b.innerText||'').trim())) return b; } return null; }
   const clickContinueBtn=()=>{ const b=findContinueBtn(); if(!b) return false; try{b.click(); return true;}catch{return false;} };
-  function readAssistant(){ const it=lastAssistant(); if(!it) return {present:false, reply:"",thinking:"",item:null}; return {present:true, reply: it.textContent.trim(), thinking:"", item:it}; }
+  function readAssistant(){ const it=lastAssistant(); if(!it) return {present:false, reply:"",thinking:"",item:null}; const t=textWithout(it).trim(); return {present:true, reply:t, thinking:"", item:it}; }
   async function waitFor(p,t){ const t0=Date.now(); while(Date.now()-t0<t){ if(p()) return true; await sleep(120);} return false; }
   function setTextareaValue(el,v){ if(el.tagName!=='TEXTAREA') return false; const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype; const s=proto&&Object.getOwnPropertyDescriptor(proto,'value'); try{ if(s&&s.set) s.set.call(el,v); else el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return true; }catch{ return false; } }
   async function typeAndSend(text,images){
