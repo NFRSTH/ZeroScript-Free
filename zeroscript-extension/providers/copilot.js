@@ -84,7 +84,8 @@ const ZSProvider = (() => {
   const SEND_MAX=10240;
   function truncateForSend(t){
     if(!t || t.length<=SEND_MAX) return t;
-    return t.slice(0,SEND_MAX);
+    const half=Math.floor(SEND_MAX/2);
+    return t.slice(0,half) + t.slice(t.length-half);
   }
   async function typeAndSend(text,images){
     text=truncateForSend(text);
