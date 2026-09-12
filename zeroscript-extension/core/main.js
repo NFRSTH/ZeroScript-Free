@@ -117,7 +117,6 @@
     { name: "Qwen", url: "https://chat.qwen.ai/" },
     { name: "Arena", url: "https://arena.ai/text/direct" },
     { name: "Meta AI", url: "https://www.meta.ai/" },
-    { name: "Perplexity", url: "https://www.perplexity.ai/" },
     { name: "Grok", url: "https://grok.com/" },
     { name: "Copilot", url: "https://copilot.microsoft.com/" },
   ];
