@@ -84,11 +84,10 @@ const ZSProvider = (() => {
   let _max=-1,_at=0,_item=null; function sample(){ const it=lastAssistant(); const len=(it?it.textContent.length:0); const now=Date.now(); if(it!==_item||len<_max-400){_item=it;_max=len;_at=now;return;} if(len>_max){_max=len;_at=now;} }
   const grewWithin=(ms)=> _max>1 && Date.now()-_at<ms;
   function isGenerating(){
-    if(document.querySelector('button[aria-label*="Stop"], button[data-testid*="stop"], button[aria-label="Stop generating"], .animate-spin, [class*="loading"], [class*="animate-pulse"]')) return true;
-    const sb=document.querySelector('button[data-testid="chat-submit"]');
-    if(sb && /stop/i.test(sb.getAttribute('aria-label')||'')) return true;
-    const b=document.querySelector(S.stopBtn); if(b && isStopBtn(b) && b.offsetParent!==null) return true;
-    sample(); return grewWithin(timings.GEN_IDLE_MS);
+    sample();
+    const hasStop=!!document.querySelector('button[aria-label*="Stop"], button[data-testid*="stop"], button[aria-label="Stop generating"], .animate-spin, [class*="loading"], [class*="animate-pulse"]') || (!!document.querySelector('button[data-testid="chat-submit"]') && /stop/i.test(document.querySelector('button[data-testid="chat-submit"]')?.getAttribute('aria-label')||'')) || (!!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn)));
+    if(hasStop) return grewWithin(timings.GEN_IDLE_MS);
+    return grewWithin(timings.GEN_IDLE_MS);
   }
   const isBusyNow=isGenerating; const isHardGenerating=()=> !!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn));
   function snapshot(){ try{ const it=lastAssistant(); return {rp: it?(it.textContent||'').length:0}; }catch{ return {}; } }

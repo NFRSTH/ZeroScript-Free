@@ -64,7 +64,7 @@ const ZSProvider = (() => {
   function isStopBtn(b){ if(!b) return false; return /stop/i.test(b.getAttribute('aria-label')||'')|| /stop/i.test(b.getAttribute('data-testid')||'') || !!b.querySelector('rect'); }
   let _max=-1,_at=0,_item=null; function sample(){ const it=lastAssistant(); const len=(it?it.textContent.length:0); const now=Date.now(); if(it!==_item||len<_max-400){_item=it;_max=len;_at=now;return;} if(len>_max){_max=len;_at=now;} }
   const grewWithin=(ms)=> _max>1 && Date.now()-_at<ms;
-  function isGenerating(){ if(document.querySelector('button[aria-label*="Stop"]')) return true; const b=document.querySelector(S.stopBtn); if(b && isStopBtn(b) && b.offsetParent!==null) return true; sample(); return grewWithin(timings.GEN_IDLE_MS); }
+  function isGenerating(){ sample(); const hasStop=!!document.querySelector('button[aria-label*="Stop"]') || (!!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn))); if(hasStop) return grewWithin(timings.GEN_IDLE_MS); return grewWithin(timings.GEN_IDLE_MS); }
   const isBusyNow=isGenerating; const isHardGenerating=()=> !!document.querySelector(S.stopBtn) && isStopBtn(document.querySelector(S.stopBtn));
   function snapshot(){ try{ const it=lastAssistant(); return {rp: it?(it.textContent||'').length:0}; }catch{ return {}; } }
   function findContinueBtn(){ for(const b of document.querySelectorAll('button')){ if(b.offsetParent===null) continue; if(/continue/i.test((b.innerText||'').trim())) return b; } return null; }
