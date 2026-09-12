@@ -36,7 +36,7 @@ const ZSProvider = (() => {
   const chatIsEmpty=()=> true;
   const getEditor=()=>{ const els=[...document.querySelectorAll(S.input)].filter(e=>!e.closest('#zs-root') && e.offsetParent!==null); return els.find(e=>e.tagName==='TEXTAREA')||els[0]||document.querySelector('textarea')||null; };
   const editorText=()=>{ const e=getEditor(); if(!e) return ""; return e.value!=null?e.value:e.textContent||""; };
-  let _locked=false; function setInputLock(on){ _locked=on; const e=getEditor(); if(!e) return; if(on){ e.setAttribute('readonly',''); e.setAttribute('placeholder','⏳ Agent working…'); } else { e.removeAttribute('readonly'); } }
+  let _locked=false; function setInputLock(on){ _locked=on; const e=getEditor(); if(!e) return; if(e.tagName==='TEXTAREA'){ if(on) e.setAttribute('readonly',''); else e.removeAttribute('readonly'); } else { e.setAttribute('contenteditable', on?'false':'true'); } if(on) e.setAttribute('placeholder','⏳ Agent working…'); }
   const composerFrame=()=> { const e=getEditor(); return e?e.parentElement:null; };
   function barMount(){ const e=getEditor(); if(!e) return null; let box=e.parentElement; while(box && box!==document.body){ if(box.contains(e)) break; box=box.parentElement; } if(!box||box===document.body) box=e.parentElement; let before=box.firstElementChild; if(before&&before.id==='zs-bar') before=before.nextElementSibling; return {parent:box, before, inside:true}; }
   function isStopBtn(b){ if(!b) return false; if(b.querySelector('rect')) return true; const p=b.querySelector('path'); if(p) return /^\s*M\s*[0-3][\s.]/.test(p.getAttribute('d')||''); return /stop/i.test(b.getAttribute('aria-label')||''); }
@@ -49,8 +49,21 @@ const ZSProvider = (() => {
   const clickContinueBtn=()=>{ const b=findContinueBtn(); if(!b) return false; try{b.click(); return true;}catch{return false;} };
   function readAssistant(){ const it=lastAssistant(); if(!it) return {present:false, reply:"",thinking:"",item:null}; return {present:true, reply: it.textContent.trim(), thinking:"", item:it}; }
   async function waitFor(p,t){ const t0=Date.now(); while(Date.now()-t0<t){ if(p()) return true; await sleep(120);} return false; }
-  function setTextareaValue(el,v){ const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype; const s=proto&&Object.getOwnPropertyDescriptor(proto,'value'); if(s&&s.set) s.set.call(el,v); else el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); }
-  async function typeAndSend(text,images){ const ed=getEditor(); if(!ed) throw new Error('Perplexity input not found'); ed.focus(); setTextareaValue(ed,text); await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && b.getAttribute('aria-disabled')!=='true'; },800); const b=document.querySelector(S.sendBtn); if(b && !isStopBtn(b)) b.click(); else ed.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); }
+  function setTextareaValue(el,v){ if(el.tagName!=='TEXTAREA') return false; const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype; const s=proto&&Object.getOwnPropertyDescriptor(proto,'value'); try{ if(s&&s.set) s.set.call(el,v); else el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); return true; }catch{ return false; } }
+  async function typeAndSend(text,images){
+    const ed=getEditor(); if(!ed) throw new Error('Perplexity input not found'); ed.focus();
+    let ok=false;
+    if(ed.tagName==='TEXTAREA'){ ok=setTextareaValue(ed,text); }
+    if(!ok){
+      try{ document.execCommand('selectAll',false,null); }catch{}
+      try{ ok=document.execCommand('insertText',false,text); }catch{}
+      if(!ok || editorText().trim().length < Math.min(text.length*0.8, 100)){
+        try{ ed.textContent=text; ed.dispatchEvent(new InputEvent('input',{bubbles:true, data:text, inputType:'insertText'})); }catch{}
+      }
+    }
+    await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && b.getAttribute('aria-disabled')!=='true'; },800);
+    const b=document.querySelector(S.sendBtn); if(b && !isStopBtn(b)) try{b.click();}catch{} else try{ ed.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); }catch{}
+  }
   const stopGeneration=()=>{ const b=document.querySelector(S.stopBtn); if(isStopBtn(b)) try{b.click();}catch{} };
   function scanError(){ try{ for(const el of document.querySelectorAll(S.errorSurfaces)){ if(el.offsetParent===null) continue; const t=(el.innerText||'').trim(); if(t.length>8&&t.length<600&&RE.contextLimit.test(t)) return t.slice(0,240); } }catch{} if(!getEditor()) return "Input disappeared"; return null; }
   const isTooLongMsg=(t)=>RE.tooLong.test(t); const isBusyMsg=(t)=>RE.busy.test(t);
