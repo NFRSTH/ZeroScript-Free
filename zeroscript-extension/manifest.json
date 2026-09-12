@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "ZeroScript Free × Roblox Studio Agent",
   "version": "1.5.6",
-  "description": "Turn ChatGPT, DeepSeek, Gemini, Kimi, GLM, Qwen, Arena, Meta AI, Perplexity, Claude, Grok or Copilot into a Roblox Studio agent that drives Studio through a local bridge.",
+  "description": "Turn ChatGPT, DeepSeek, Gemini, Kimi, GLM, Qwen, Arena, Meta AI, Perplexity, Grok or Copilot into a Roblox Studio agent that drives Studio through a local bridge.",
   "permissions": ["storage"],
   "host_permissions": [
     "https://chat.deepseek.com/*",
@@ -19,7 +19,6 @@
     "https://meta.ai/*",
     "https://www.perplexity.ai/*",
     "https://perplexity.ai/*",
-    "https://claude.ai/*",
     "https://grok.com/*",
     "https://copilot.microsoft.com/*",
     "http://127.0.0.1/*",
@@ -106,12 +105,6 @@
     {
       "matches": ["https://www.perplexity.ai/*", "https://perplexity.ai/*"],
       "js": ["core/config.js", "core/parser.js", "providers/perplexity.js", "core/main.js"],
-      "css": ["overlay.css"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://claude.ai/*"],
-      "js": ["core/config.js", "core/parser.js", "providers/claude.js", "core/main.js"],
       "css": ["overlay.css"],
       "run_at": "document_idle"
     },
