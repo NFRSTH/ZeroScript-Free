@@ -5,10 +5,10 @@ const ZSProvider = (() => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let diag = () => {};
   const S = {
-    chatItem: 'div[data-testid*="message"], div[class*="message"], article, div[class*="response"]',
-    input: 'textarea[placeholder*="Ask"], textarea, div[contenteditable="true"], [data-testid*="input"]',
-    sendBtn: 'button[aria-label*="Send"], button[type="submit"], button:has(svg)',
-    stopBtn: 'button[aria-label*="Stop"], button[data-testid*="stop"]',
+    chatItem: 'div[data-testid*="message"], div[data-message-id], article, div[class*="response"], main div[data-testid]',
+    input: "textarea[placeholder*='Ask'], textarea[data-testid='grok-input'], textarea[data-testid='tweetTextarea_0'], div[contenteditable=\"true\"][aria-label*=\"message\"], div.ProseMirror[contenteditable=\"true\"], textarea, [contenteditable=\"true\"]",
+    sendBtn: 'button[aria-label*="Send"], button[data-testid="send-button"], button[aria-label*="Send message"], button[type="submit"]',
+    stopBtn: 'button[aria-label*="Stop"], button[data-testid*="stop"], button[aria-label*="Stop response"]',
     errorSurfaces: '[role="alert"],[class*="toast"],[class*="error"]',
     reasoning: '[class*="thinking"],[data-testid*="reasoning"]',
   };
@@ -44,8 +44,28 @@ const ZSProvider = (() => {
   const clickContinueBtn=()=>{ const b=findContinueBtn(); if(!b) return false; try{b.click(); return true;}catch{return false;} };
   function readAssistant(){ const it=lastAssistant(); if(!it) return {present:false, reply:"",thinking:"",item:null}; return {present:true, reply: it.textContent.trim(), thinking:"", item:it}; }
   async function waitFor(p,t){ const t0=Date.now(); while(Date.now()-t0<t){ if(p()) return true; await sleep(120);} return false; }
-  function setTextareaValue(el,v){ const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype; const s=proto&&Object.getOwnPropertyDescriptor(proto,'value'); if(s&&s.set) s.set.call(el,v); else el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); }
-  async function typeAndSend(text,images){ const ed=getEditor(); if(!ed) throw new Error('Grok input not found'); ed.focus(); if(ed.tagName==='TEXTAREA'){ setTextareaValue(ed,text); } else { document.execCommand('selectAll',false,null); document.execCommand('insertText',false,text); } await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && b.getAttribute('aria-disabled')!=='true'; },800); const b=document.querySelector(S.sendBtn); if(b) b.click(); else ed.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true})); }
+  function setTextareaValue(el,v){ if(el.tagName!=='TEXTAREA') return false; const proto=window.HTMLTextAreaElement&&window.HTMLTextAreaElement.prototype; const s=proto&&Object.getOwnPropertyDescriptor(proto,'value'); try{ if(s&&s.set) s.set.call(el,v); else el.value=v; el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); return true; }catch{ return false; } }
+  async function typeAndSend(text,images){
+    const ed=getEditor(); if(!ed) throw new Error('Grok input not found'); ed.focus();
+    let ok=false;
+    if(ed.tagName==='TEXTAREA'){ ok=setTextareaValue(ed,text); }
+    if(!ok){
+      try{ document.execCommand('selectAll',false,null); }catch{}
+      try{ ok=document.execCommand('insertText',false,text); }catch{}
+      await sleep(150);
+      if(!ok || editorText().trim().length < Math.min(text.length*0.8, 100)){
+        try{
+          if(ed.isContentEditable){ ed.textContent=text; ed.dispatchEvent(new InputEvent('input',{bubbles:true, data:text, inputType:'insertText'})); }
+          else { ed.textContent=text; ed.dispatchEvent(new Event('input',{bubbles:true})); }
+        }catch{}
+        await sleep(150);
+      }
+    }
+    await waitFor(()=>{ const b=document.querySelector(S.sendBtn); return b && !b.disabled && b.getAttribute('aria-disabled')!=='true' && b.offsetParent!==null; },1200);
+    const b=document.querySelector(S.sendBtn);
+    if(b && !b.disabled && b.getAttribute('aria-disabled')!=='true' && b.offsetParent!==null){ try{b.click();}catch{} return; }
+    try{ const t=ed.isContentEditable?ed:document.querySelector('[contenteditable]')||ed; t.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,bubbles:true})); }catch{}
+  }
   const stopGeneration=()=>{ const b=document.querySelector(S.stopBtn); if(isStopBtn(b)) try{b.click();}catch{} };
   function scanError(){ try{ for(const el of document.querySelectorAll(S.errorSurfaces)){ if(el.offsetParent===null) continue; const t=(el.innerText||'').trim(); if(t.length>8&&t.length<600&&RE.contextLimit.test(t)) return t.slice(0,240); } }catch{} if(!getEditor()) return "Input disappeared"; return null; }
   const isTooLongMsg=(t)=>RE.tooLong.test(t); const isBusyMsg=(t)=>RE.busy.test(t);
