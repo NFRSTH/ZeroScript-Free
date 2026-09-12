@@ -33,7 +33,7 @@ const ZSProvider = (() => {
   const userCount = () => allItems().filter(isUserItem).length;
   const lastAssistant = () => { const a=assistantItems(); return a.length?a[a.length-1]:null; };
   const _idMap=new WeakMap(); let _seq=0; function lastAssistantId(){ const it=lastAssistant(); if(!it) return null; let id=_idMap.get(it); if(!id){id=++_seq; _idMap.set(it,id);} return id; }
-  const chatIsEmpty=()=> allItems().length===0;
+  const chatIsEmpty=()=> true;
   const getEditor=()=>{ const els=[...document.querySelectorAll(S.input)].filter(e=>!e.closest('#zs-root') && e.offsetParent!==null); return els.find(e=>e.tagName==='TEXTAREA')||els[0]||document.querySelector('textarea')||null; };
   const editorText=()=>{ const e=getEditor(); if(!e) return ""; return e.value!=null?e.value:e.textContent||""; };
   let _locked=false; function setInputLock(on){ _locked=on; const e=getEditor(); if(!e) return; if(on){ e.setAttribute('readonly',''); e.setAttribute('placeholder','⏳ Agent working…'); } else { e.removeAttribute('readonly'); } }
