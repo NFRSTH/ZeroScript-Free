@@ -20,13 +20,15 @@ const ZSProvider = (() => {
   const timings = { GEN_IDLE_MS: 1500, REASON_IDLE_MS: 12000, WARMUP_MS: 45000, REASON_NOREPLY_MS: 90000, STABLE_MS: 9000, RESPONSE_TIMEOUT_MS: 300000 };
   const allItems = () => {
     let items=[...document.querySelectorAll(S.chatItem)].filter(e=> !e.closest('#zs-root') && (e.textContent||'').trim().length>5);
-    if(items.length<2) items=[...document.querySelectorAll('main [role="article"], main div')].filter(e=> !e.closest('#zs-root') && (e.textContent||'').trim().length>30 && e.children.length<10);
-    return items;
+    if(items.length<2){
+      items=[...document.querySelectorAll('main [data-message-id], main [data-testid], main [role="article"], main div')].filter(e=> !e.closest('#zs-root') && (e.textContent||'').trim().length>30 && e.children.length<10 && !/Starting Up/i.test(e.textContent));
+    }
+    return items.filter(e=> !/^(Starting Up|Agent active)/i.test((e.textContent||'').trim()));
   };
-  const isAssistantItem = (it) => !!it && (it.matches('[data-testid*="assistant"]') || it.querySelector('[class*="assistant"]') || /grok|assistant/i.test(it.className) || it.getAttribute('data-message-author-role')==='assistant');
+  const isAssistantItem = (it) => !!it && (it.matches('[data-testid*="assistant"], [data-message-author-role="assistant"]') || it.querySelector('[class*="assistant"], [data-message-author-role="assistant"]') || /grok|assistant/i.test(it.className));
   const isUserItem = (it) => !!it && !isAssistantItem(it);
-  function textWithout(root, ex){ if(!root) return ""; const c=root.cloneNode(true); c.querySelectorAll('.zs-chip'+(ex?','+ex:'')).forEach(n=>n.remove()); return c.textContent||""; }
-  function itemText(it){ if(!it) return textWithout(it); return textWithout(it); }
+  function textWithout(root, ex){ if(!root) return ""; const c=root.cloneNode(true); c.querySelectorAll('.zs-chip'+(ex?','+ex:'')+', [data-testid*="thinking"], .thinking').forEach(n=>n.remove()); return c.textContent||""; }
+  function itemText(it){ if(!it) return ""; return textWithout(it); }
   function classifyText(it,ex){ if(!it) return ""; return textWithout(it, ex); }
   const assistantItems = () => allItems().filter(isAssistantItem);
   const assistantCount = () => assistantItems().length;
