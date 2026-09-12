@@ -5,7 +5,7 @@ const ZSProvider = (() => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   let diag = () => {};
   const S = {
-    chatItem: 'div[data-testid*="message"], div[data-message-id], article, [role="article"], div[data-testid*="conversation"] div',
+    chatItem: 'div.group\\/ai-message-item, div[class*="ai-message"], div[data-testid*="message"], div[data-message-id], article, [role="article"]',
     input: 'textarea[data-testid="composer-input"], textarea[placeholder*="Message"], textarea[data-testid*="composer-input"], textarea',
     sendBtn: 'button[data-testid="submit-button"], button[aria-label="Submit message"], button[aria-label*="Submit"], button[type="submit"]',
     stopBtn: 'button[aria-label*="Stop"], button[data-testid*="stop"]',
@@ -26,7 +26,7 @@ const ZSProvider = (() => {
     items = items.filter((e,i,arr)=> !arr.some(o=> o!==e && o.contains(e)));
     return items;
   };
-  const isAssistantItem = (it) => !!it && (it.matches('[data-author="bot"], [data-testid*="assistant"], [data-message-author-role="assistant"]')|| !!it.querySelector('[data-author="bot"], [class*="assistant"], [data-message-author-role="assistant"]'));
+  const isAssistantItem = (it) => !!it && (it.matches('[data-author="bot"], [data-testid*="assistant"], [data-message-author-role="assistant"], div.group\\/ai-message-item, div[class*="ai-message"]')|| !!it.querySelector('[data-author="bot"], [class*="assistant"], [data-message-author-role="assistant"]') || it.classList.contains('group/ai-message-item') || /ai-message/i.test(it.className));
   const isUserItem = (it) => !!it && !isAssistantItem(it);
   function textWithout(root, ex){ if(!root) return ""; const c=root.cloneNode(true); c.querySelectorAll('.zs-chip'+(ex?','+ex:'')+', [data-testid*="thinking"], .thinking').forEach(n=>n.remove()); return c.textContent||""; }
   function itemText(it){ if(!it) return ""; return textWithout(it); }
